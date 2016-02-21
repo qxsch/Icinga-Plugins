@@ -1,4 +1,4 @@
-# Icinga
+# pyWrapper.py
 
 This plugin serves as a wrapper arround a noisy plugin. It extracts the important information from the following strings:
 
