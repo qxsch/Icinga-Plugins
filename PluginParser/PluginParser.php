@@ -3,6 +3,10 @@
 
 /**
  * Parses the icinga plugin output
+ * @param string $stdOut the output received from standard output
+ * @param string $stdErr the output received standard error
+ * @param int $returnCode  the return code, that was received
+ * @return array an associative array with the following keys: logs, Summary, SummaryPerfData, Multiline, MultilinePerfData
  */
 function checkIcingaPlugin($stdOut, $stdErr, $returnCode) {
 	$parsed=array();
@@ -107,22 +111,4 @@ function checkIcingaPlugin($stdOut, $stdErr, $returnCode) {
 }
 
 
-echo "\n";
-var_dump(checkIcingaPlugin('test', '', 2));
-var_dump(checkIcingaPlugin('test \\| test', '', 2));
-var_dump(checkIcingaPlugin('test | test', '', 2));
-var_dump(checkIcingaPlugin('test | single=1
-test
-test
-test |
-\'diskC\'=1
-diskD=2', '', 2));
-var_dump(checkIcingaPlugin('test | single=-1
-| diskC=1.5KB
-diskD=2', '', 2));
-/*var_dump(checkIcingaPlugin('test
-test
-test
-test', '', 2));*/
-echo "\n";
 
