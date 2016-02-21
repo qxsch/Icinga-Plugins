@@ -1,3 +1,3 @@
 # PluginParser
 
-a plugin output parser in PHP and Python written to validate check plugins.
+a plugin output parser to validate check plugins
