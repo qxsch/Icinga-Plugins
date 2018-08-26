@@ -200,9 +200,6 @@ function displayCfgDiff($cfg1, $cfg2) {
 				coloredEcho("<<< ", 'red'); coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
 				coloredEcho("< define $definedObject {\n", 'red');
 				foreach($definedVals['v'] as $key => $val) {
-					if($definedVals['p'] . ':' . $definedVals['l'] != $val['p'] . ':' . $val['l']) {
-						coloredEcho("<<< ", 'red'); coloredEcho($val['p'] . ':' . $val['l'] . "\n", 'cyan');
-					}
 					coloredEcho("< \t$key " . $val['v'] . "\n", 'red');
 				}
 				coloredEcho("< }\n", 'red');
