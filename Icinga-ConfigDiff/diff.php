@@ -5,6 +5,14 @@ if(count($_SERVER['argv']) < 3) {
 	die("Usage: " . basename($_SERVER['argv'][0]) . " globpath1 globpath2\n");
 }
 
+$usecolors = true;
+if (function_exists('posix_isatty')
+    && !posix_isatty(STDOUT)
+) {
+    $usecolors = false;
+}
+
+
 echo "Reading the configuration from glob path \"" . $_SERVER['argv'][1] . "\" into memory\n";
 $cfg1 = getRecursiveCfgArray($_SERVER['argv'][1]);
 echo "Reading the configuration from glob path \"" . $_SERVER['argv'][2] . "\" into memory\n";
@@ -143,26 +151,32 @@ function getRecursiveCfgArray($cfgpath) {
 }
 
 function coloredEcho($str, $color) {
-	switch(strtolower(trim($color))) {
-		case 'black': $c = '0;30'; break;
-		case 'dark_gray': $c = '1;30'; break;
-		case 'blue': $c = '0;34'; break;
-		case 'light_blue': $c = '1;34'; break;
-		case 'green': $c = '0;32'; break;
-		case 'light_green': $c = '1;32'; break;
-		case 'cyan': $c = '0;36'; break;
-		case 'light_cyan': $c = '1;36'; break;
-		case 'red': $c = '0;31'; break;
-		case 'light_red': $c = '1;31'; break;
-		case 'purple': $c = '0;35'; break;
-		case 'light_purple': $c = '1;35'; break;
-		case 'brown': $c = '0;33'; break;
-		case 'yellow': $c = '1;33'; break;
-		case 'light_gray': $c = '0;37'; break;
-		case 'white': $c = '1;37'; break;
-		default: echo "$str"; return;
+	global $usecolors;
+	if($usecolors) {
+		switch(strtolower(trim($color))) {
+			case 'black': $c = '0;30'; break;
+			case 'dark_gray': $c = '1;30'; break;
+			case 'blue': $c = '0;34'; break;
+			case 'light_blue': $c = '1;34'; break;
+			case 'green': $c = '0;32'; break;
+			case 'light_green': $c = '1;32'; break;
+			case 'cyan': $c = '0;36'; break;
+			case 'light_cyan': $c = '1;36'; break;
+			case 'red': $c = '0;31'; break;
+			case 'light_red': $c = '1;31'; break;
+			case 'purple': $c = '0;35'; break;
+			case 'light_purple': $c = '1;35'; break;
+			case 'brown': $c = '0;33'; break;
+			case 'yellow': $c = '1;33'; break;
+			case 'light_gray': $c = '0;37'; break;
+			case 'white': $c = '1;37'; break;
+			default: echo "$str"; return;
+		}
+		echo "\033[" . $c . "m" . $str . "\033[0m";
 	}
-	echo "\033[" . $c . "m" . $str . "\033[0m";
+	else {
+		echo "$str";
+	}
 }
 
 function displayCfgDiff($cfg1, $cfg2) {
