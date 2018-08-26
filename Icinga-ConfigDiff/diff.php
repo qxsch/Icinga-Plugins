@@ -23,6 +23,16 @@ function getCfgKey($definedObject, array $definedVals) {
 			return $definedVals['v']['host_name']['v'];
 		case 'servicedependency':
 			return  $definedVals['v']['host_name']['v'] . '||' . $definedVals['v']['service_description']['v'] . '||' . $definedVals['v']['dependent_host_name']['v'] . '||' . $definedVals['v']['dependent_service_description']['v'];
+		case 'timeperiod':
+			return $definedVals['v']['timeperiod_name']['v'];
+		case 'command':
+			return $definedVals['v']['command_name']['v'];
+		case 'contact':
+			return $definedVals['v']['contact_name']['v'];
+		case 'hostgroup':
+			return $definedVals['v']['hostgroup_name']['v'];
+		case 'servicegroup':
+			return $definedVals['v']['servicegroup_name']['v'];
 		default:
 			echo "\t\tERROR: Unknown Object $definedObject - using '' as key (defined in " . $definedVals['p'] . ":" . $definedVals['l'] . ")\n";
 			return '';
