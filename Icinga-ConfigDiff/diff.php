@@ -57,7 +57,15 @@ function getRecursiveCfgArray($cfgpath) {
 							continue;
 						}
 						echo "\t\tERROR: $definedObject \"$k\" has been defined twice (defined in " . $a[$k]['p'] . ":" . $a[$k]['l'] . " and in " . $cfg[$definedObject][$k]['p'] . ":" . $cfg[$definedObject][$k]['l'] . ")\n";
-						foreach($definedVals['v'] as $key => $val) {
+						// $cfg[$definedObject][$k] = $definedVals; // comment the foreach loop, when using this line
+						foreach($definedVals['v'] as $key => $val) { // comment the above line, when using this loop
+							if(isset($cfg[$definedObject][$k]['v'][$key])) {
+								echo "\t\tERROR: Overwriting existing value from " . $cfg[$definedObject][$k]['v'][$key]['p'] . ":" . $cfg[$definedObject][$k]['v'][$key]['l'] . "  with the new value from " . $val['p'] . ":" . $val['l']."\n";
+							}
+							else {
+								echo "\t\tERROR: Adding new value from " . $val['p'] . ":" . $val['l']." to an already defined object\n";
+							}
+
 							$cfg[$definedObject][$k]['v'][$key] = $val;
 						}
 					}
@@ -82,9 +90,23 @@ function getRecursiveCfgArray($cfgpath) {
 							//echo "End of Define: $definedObject\n";
 							$k = strtolower(getCfgKey($definedObject, $definedVals));
 							if(isset($cfg[$definedObject][$k])) {
-								echo "\t\tERROR: $definedObject \"$k\" has been defined twice (defined in " . $definedObject[$k]['p'] . ":" . $definedObject[$k]['l'] . " and in $p:$l)\n";
+								echo "\t\tERROR: $definedObject \"$k\" has been defined twice (defined in " . $cfg[$definedObject][$k]['p'] . ":" . $cfg[$definedObject][$k]['l'] . " and in $p:$l)\n";
+								// $cfg[$definedObject][$k] = $definedVals; // comment the foreach loop, when using this line
+								foreach($definedVals['v'] as $key => $val) { // comment the above line, when using this loop
+									if(isset($cfg[$definedObject][$k]['v'][$key])) {
+										echo "\t\tERROR: Overwriting existing value from " . $cfg[$definedObject][$k]['v'][$key]['p'] . ":" . $cfg[$definedObject][$k]['v'][$key]['l'] . "  with the new value from " . $val['p'] . ":" . $val['l']."\n";
+									}
+									else {
+										echo "\t\tERROR: Adding new value from " . $val['p'] . ":" . $val['l']." to an already defined object\n";
+									}
+									$cfg[$definedObject][$k]['v'][$key] = $val;
+								}
 							}
-							$cfg[$definedObject][$k] = $definedVals;
+							else {
+								$cfg[$definedObject][$k] = $definedVals;
+							}
+
+
 							$isInDefine = false;
 							$definedObject = '';
 							$definedVals = array('p' => '', 'l' => 0, 'v' => array());
@@ -149,6 +171,7 @@ function displayCfgDiff($cfg1, $cfg2) {
 		if(!isset($cfg2[$definedObject])) {
 			foreach($a as $k => $definedVals) {
 				echo "Removed $definedObject: $k\n";
+				coloredEcho("<<< ", 'red'); coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
 				coloredEcho("< define $definedObject {\n", 'red');
 				foreach($definedVals['v'] as $key => $val) {
 					coloredEcho("< \t$key " . $val['v'] . "\n", 'red');
@@ -160,8 +183,12 @@ function displayCfgDiff($cfg1, $cfg2) {
 		foreach($a as $k => $definedVals) {
 			if(!isset($cfg2[$definedObject][$k])) {
 				echo "Removed $definedObject: $k\n";
+				coloredEcho("<<< ", 'red'); coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
 				coloredEcho("< define $definedObject {\n", 'red');
 				foreach($definedVals['v'] as $key => $val) {
+					if($definedVals['p'] . ':' . $definedVals['l'] != $val['p'] . ':' . $val['l']) {
+						coloredEcho("<<< ", 'red'); coloredEcho($val['p'] . ':' . $val['l'] . "\n", 'cyan');
+					}
 					coloredEcho("< \t$key " . $val['v'] . "\n", 'red');
 				}
 				coloredEcho("< }\n", 'red');
@@ -176,6 +203,8 @@ function displayCfgDiff($cfg1, $cfg2) {
 			}
 			if($hasChanges) {
 				echo "Changed $definedObject: $k\n";
+				coloredEcho("<<< ", 'red'); coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+				coloredEcho(">>> ", 'green'); coloredEcho($cfg2[$definedObject][$k]['p'] . ':' . $cfg2[$definedObject][$k]['l'] . "\n", 'cyan');
 				coloredEcho("| define $definedObject {\n", 'brown');
 				foreach($definedVals['v'] as $key => $val) {
 					if(!isset($cfg2[$definedObject][$k]['v'][$key])) {
@@ -199,6 +228,7 @@ function displayCfgDiff($cfg1, $cfg2) {
 		if(!isset($cfg1[$definedObject])) {
 			foreach($a as $k => $definedVals) {
 				echo "New $definedObject: $k\n";
+				coloredEcho(">>> ", 'green'); coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
 				coloredEcho("> define $definedObject {\n", 'green');
 				foreach($definedVals['v'] as $key => $val) {
 					coloredEcho("> \t$key " . $val['v'] . "\n", 'green');
@@ -210,6 +240,7 @@ function displayCfgDiff($cfg1, $cfg2) {
 		foreach($a as $k => $definedVals) {
 			if(!isset($cfg1[$definedObject][$k])) {
 				echo "New $definedObject: $k\n";
+				coloredEcho(">>> ", 'green'); coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
 				coloredEcho("> define $definedObject {\n", 'green');
 				foreach($definedVals['v'] as $key => $val) {
 					coloredEcho("> \t$key " . $val['v'] . "\n", 'green');
