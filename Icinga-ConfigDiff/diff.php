@@ -26,7 +26,7 @@ displayCfgDiff($cfg1, $cfg2);
 function getCfgKey($definedObject, array $definedVals) {
 	// template
 	if(isset($definedVals['v']['name']['v'])) {
-		if(!isset($definedVals['v']['name']['v']) || $definedVals['v']['name']['v'] != 0) {
+		if(!isset($definedVals['v']['register']['v']) || $definedVals['v']['register']['v'] != 0) {
 			echo "\t\tWARNING: You have a registered Template $definedObject (defined in " . $definedVals['p'] . ":" . $definedVals['l'] . ")\n";
 		}
 		return 'template-' . $definedObject . '||' . $definedVals['v']['name']['v'];
