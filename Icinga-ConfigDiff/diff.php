@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 
-if(count($_SERVER['argv']) < 3) {
+if(count($_SERVER['argv']) < 3 || $_SERVER['argv'][1] == '' || $_SERVER['argv'][2] == '') {
 	die("Usage: " . basename($_SERVER['argv'][0]) . " globpath1 globpath2\n");
 }
 
@@ -24,23 +24,32 @@ displayCfgDiff($cfg1, $cfg2);
 
 
 function getCfgKey($definedObject, array $definedVals) {
+	// template
+	if(isset($definedVals['v']['name']['v'])) {
+		if(!isset($definedVals['v']['name']['v']) || $definedVals['v']['name']['v'] != 0) {
+			echo "\t\tWARNING: You have a registered Template $definedObject (defined in " . $definedVals['p'] . ":" . $definedVals['l'] . ")\n";
+		}
+		return 'template-' . $definedObject . '||' . $definedVals['v']['name']['v'];
+	}
 	switch($definedObject) {
 		case 'service':
-			return  $definedVals['v']['host_name']['v'] . '||' . $definedVals['v']['service_description']['v'];
+			return  $definedObject . '||' . $definedVals['v']['host_name']['v'] . '||' . $definedVals['v']['service_description']['v'];
 		case 'host':
-			return $definedVals['v']['host_name']['v'];
+			return  $definedObject . '||' . $definedVals['v']['host_name']['v'];
 		case 'servicedependency':
-			return  $definedVals['v']['host_name']['v'] . '||' . $definedVals['v']['service_description']['v'] . '||' . $definedVals['v']['dependent_host_name']['v'] . '||' . $definedVals['v']['dependent_service_description']['v'];
+			return  $definedObject . '||' . $definedVals['v']['host_name']['v'] . '||' . $definedVals['v']['service_description']['v'] . '||' . $definedVals['v']['dependent_host_name']['v'] . '||' . $definedVals['v']['dependent_service_description']['v'];
 		case 'timeperiod':
-			return $definedVals['v']['timeperiod_name']['v'];
+			return  $definedObject . '||' . $definedVals['v']['timeperiod_name']['v'];
 		case 'command':
-			return $definedVals['v']['command_name']['v'];
+			return  $definedObject . '||' . $definedVals['v']['command_name']['v'];
 		case 'contact':
-			return $definedVals['v']['contact_name']['v'];
+			return  $definedObject . '||' . $definedVals['v']['contact_name']['v'];
 		case 'hostgroup':
-			return $definedVals['v']['hostgroup_name']['v'];
+			return  $definedObject . '||' . $definedVals['v']['hostgroup_name']['v'];
 		case 'servicegroup':
-			return $definedVals['v']['servicegroup_name']['v'];
+			return  $definedObject . '||' . $definedVals['v']['servicegroup_name']['v'];
+		case 'contactgroup':
+			return  $definedObject . '||' . $definedVals['v']['contactgroup_name']['v'];
 		default:
 			echo "\t\tERROR: Unknown Object $definedObject - using '' as key (defined in " . $definedVals['p'] . ":" . $definedVals['l'] . ")\n";
 			return '';
@@ -48,11 +57,21 @@ function getCfgKey($definedObject, array $definedVals) {
 }
 
 function getRecursiveCfgArray($cfgpath) {
+	$timeperiodKeys = array(
+		'timeperiod_name' => true,
+		'alias'	=> true,
+		'exclude' => true
+	);
+	if($cfgpath[strlen($cfgpath)-1] == '/') {
+		$cfgpath = substr($cfgpath, 0, -1);
+	}
 	$cfg = array();
 	foreach(glob($cfgpath) as $p) {
 		if(is_dir($p)) {
 			echo "\tProcessing path: $p\n";
-			foreach(glob("$p/*.cfg") as $p) {
+			foreach(glob("$p/*") as $p) {
+				// no directory && no *.cfg file? skip this entry
+				if(!is_dir($p) && !fnmatch("*.cfg", $p)) continue;
 				$subcfg = getRecursiveCfgArray($p);
 				foreach($subcfg as $definedObject => $a) {
 					if(!isset($cfg[$definedObject])) {
@@ -121,10 +140,19 @@ function getRecursiveCfgArray($cfgpath) {
 						}
 						else {
 							if(preg_match('/^(\S+)\s+(.*)$/', $line, $matches)) {
-								if(isset($definedVals['v'][$matches[1]])) {
-									echo "\t\tERROR: Value \"" . $matches[1] . "\" has been defined twice (defined in " . $definedVals['v'][$matches[1]]['p'] . ":"  . $definedVals['v'][$matches[1]]['l'] .  " and in $p:$l)\n";
+								if($definedObject == 'timeperiod' && !isset($timeperiodKeys[$matches[1]])) {
+									$matches[0] = preg_replace('/\s+/', ' ', $matches[0]);
+									if(isset($definedVals['v'][$matches[0]])) {
+										echo "\t\tERROR: Value \"" . $matches[0] . "\" has been defined twice (defined in " . $definedVals['v'][$matches[0]]['p'] . ":"  . $definedVals['v'][$matches[0]]['l'] .  " and in $p:$l)\n";
+									}
+									$definedVals['v'][$matches[0]] = array('p' => $p, 'l' => $l, 'v' => '');
 								}
-								$definedVals['v'][$matches[1]] = array('p' => $p, 'l' => $l, 'v' => trim($matches[2]));
+								else {
+									if(isset($definedVals['v'][$matches[1]])) {
+										echo "\t\tERROR: Value \"" . $matches[1] . "\" has been defined twice (defined in " . $definedVals['v'][$matches[1]]['p'] . ":"  . $definedVals['v'][$matches[1]]['l'] .  " and in $p:$l)\n";
+									}
+									$definedVals['v'][$matches[1]] = array('p' => $p, 'l' => $l, 'v' => trim($matches[2]));
+								}
 							}
 						}
 					}
@@ -212,6 +240,12 @@ function displayCfgDiff($cfg1, $cfg2) {
 					break;
 				}
 			}
+			foreach($cfg2[$definedObject][$k]['v'] as $key => $val) {
+				if(!isset($definedVals['v'][$key])) {
+					$hasChanges = true;
+					break;
+				}
+			}
 			if($hasChanges) {
 				echo "Changed $definedObject: $k\n";
 				coloredEcho("<<< ", 'red'); coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
@@ -227,6 +261,11 @@ function displayCfgDiff($cfg1, $cfg2) {
 					}
 					else {
 						coloredEcho("| \t$key " . $val['v'] . "\n", 'brown');
+					}
+				}
+				foreach($cfg2[$definedObject][$k]['v'] as $key => $val) {
+					if(!isset($definedVals['v'][$key])) {
+						coloredEcho("> \t$key " . $val['v'] . "\n", 'green');
 					}
 				}
 				coloredEcho("| }\n", 'brown');
