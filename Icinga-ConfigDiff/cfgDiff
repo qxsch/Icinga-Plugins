@@ -1,0 +1,501 @@
+#!/usr/bin/env php
+<?php
+
+
+$opts = array(
+	'v' => 0,
+	'stat' => true,
+	'diff' => true,
+);
+$args = array();
+foreach($_SERVER['argv'] as $i => $v) {
+	if($i == 0) continue;
+	switch($v) {
+		case '-h': $opts['h'] =  true; break;
+		case '-q':   $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
+		case '-v':   $opts['v'] =  max($opts['v'], 1); break;
+		case '-vv':  $opts['v'] =  max($opts['v'], 2); break;
+		case '-vvv': $opts['v'] =  max($opts['v'], 3); break;
+		case '--stat':    $opts['stat'] = true;  break;
+		case '--no-stat': $opts['stat'] = false; break;
+		case '--just-stat': $opts['stat'] = true; $opts['diff'] = false; $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
+		case '--just-diff': $opts['stat'] = false; $opts['diff'] = true; $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
+		case '--': $i++; break(2);
+		default: break(2);
+	}
+}
+$args = array_slice($_SERVER['argv'], $i);
+
+if(count($args) < 2 || $args[0] == '' || $args[1] == '' || (isset($opts['h']) && $opts['h'])) {
+	echo "+-------------------------------------------------------+\n";
+	echo "| Show the difference between two Icinga configurations |\n";
+	echo "+-------------------------------------------------------+\n\n";
+	echo "USAGE: " . basename($_SERVER['argv'][0]) . " [options] globpath1 globpath2\n\n";
+	echo "\t-h = Show this help\n";
+	echo "\t-q, -v, -vv, -vvv  = Set the verbosity (quiet, verbose, very verbose, debug)\n";
+	echo "\t--stat      = Show the statistics\n";
+	echo "\t--no-stat   = Don't show the statistics\n";
+	echo "\t--just-stat = Just show the statistics (this also sets verbosity to quiet)\n";
+	echo "\t--just-diff = Just show the diff (this also sets verbosity to quiet)\n";
+	exit();
+}
+
+if($opts['v'] >= 1) echo "Reading the configuration from glob path \"" . $args[0] . "\" into memory\n";
+$cfg1 = new Cfg($args[0], $opts['v']);
+if($opts['v'] >= 1) echo "Reading the configuration from glob path \"" . $args[1] . "\" into memory\n";
+$cfg2 = new Cfg($args[1], $opts['v']);
+
+if($opts['stat'] == false && $opts['diff'] == false) {
+	if($opts['v'] >= 1) echo "WARNING: Not calculating any diff...\n\n";
+}
+else {
+	if($opts['v'] >= 1) echo "Calculating the diff...\n\n";
+	$cfg1->diff($cfg2)->display(
+		$opts['stat'],
+		$opts['diff']
+	);
+}
+
+class closureCfgProcessor implements CfgProcessor {
+	protected $func;
+
+	public function __construct(\Closure $func) {
+		$this->func = $func;
+	}
+
+	public function processValues($definedObject, array $definedVals) {
+		$f = $this->func;
+		return $f($definedObject, $definedVals);
+	}
+}
+
+Interface CfgProcessor {
+	/**
+	 * Rewrites aand/or filters object values
+	 *
+	 * It can be used to modify the diff by deleting or normalizing values
+	 * @param string $definedObject the name of the object
+	 * @param array  $definedVals the defined values ( the actual values are under:  $definedVals['v'][KEYNAME]['v'] )
+	 * @return array  the new $definedVals or empty array in case the whole object should be ignored
+	 */
+	public function processValues($definedObject, array $definedVals);
+}
+
+class Cfg {
+	protected $globpath;
+
+	protected $parsedObjects = array();
+
+	protected static $processors = array();
+
+	public function __construct($globpath, $verbosity = 0) {
+		$this->globpath = (string)$globpath;
+		$this->verbosity = (int)$verbosity;
+		$this->update();
+	}
+
+	public function getParsedObjects() {
+		return $this->parsedObjects;
+	}
+
+	public function update() {
+		$this->parsedObjects = $this->getRecursiveCfgArray($this->globpath);
+		return $this;
+	}
+
+	public function diff(Cfg $cfg, $useColors = null) {
+		return new cfgDiff($this, $cfg, $useColors);
+	}
+
+	public static function pushProcessor(CfgProcessor $p) {
+		self::$processors[] = $p;
+	}
+	public static function clearProcessors() {
+		self::$processors[] = array();
+	}
+
+	protected function say($str, $level) {
+		if($this->verbosity >= $level) {
+			echo $str;
+		}
+	}
+
+	protected function processValues($definedObject, array $definedVals) {
+		// is function can be used to modify the diff by deleting or normalizing values
+		// IDEALLY THIS FUNCTION SHOULD JUST DO NOTHING:
+		foreach(self::$processors as $p) {
+			$definedVals = $p->processValues($definedObject, $definedVals);
+			if(!is_array($definedVals) || empty($definedVals)) return array();
+		}
+		return $definedVals;
+	}
+
+	protected function getCfgKey($definedObject, array $definedVals) {
+		// template
+		if(isset($definedVals['v']['name']['v'])) {
+			if(!isset($definedVals['v']['register']['v']) || $definedVals['v']['register']['v'] != 0) {
+				$this->say("\t\tWARNING: You have a registered Template $definedObject (defined in " . $definedVals['p'] . ":" . $definedVals['l'] . ")\n", 0);
+			}
+			return 'template-' . $definedObject . '||' . $definedVals['v']['name']['v'];
+		}
+		switch($definedObject) {
+			case 'service':
+				return  $definedObject . '||' . $definedVals['v']['host_name']['v'] . '||' . $definedVals['v']['service_description']['v'];
+			case 'host':
+				return  $definedObject . '||' . $definedVals['v']['host_name']['v'];
+			case 'servicedependency':
+				return  $definedObject . '||' . $definedVals['v']['host_name']['v'] . '||' . $definedVals['v']['service_description']['v'] . '||' . $definedVals['v']['dependent_host_name']['v'] . '||' . $definedVals['v']['dependent_service_description']['v'];
+			case 'timeperiod':
+				return  $definedObject . '||' . $definedVals['v']['timeperiod_name']['v'];
+			case 'command':
+				return  $definedObject . '||' . $definedVals['v']['command_name']['v'];
+			case 'contact':
+				return  $definedObject . '||' . $definedVals['v']['contact_name']['v'];
+			case 'hostgroup':
+				return  $definedObject . '||' . $definedVals['v']['hostgroup_name']['v'];
+			case 'servicegroup':
+				return  $definedObject . '||' . $definedVals['v']['servicegroup_name']['v'];
+			case 'contactgroup':
+				return  $definedObject . '||' . $definedVals['v']['contactgroup_name']['v'];
+			default:
+				$this->say("\t\tERROR: Unknown Object $definedObject - using '' as key (defined in " . $definedVals['p'] . ":" . $definedVals['l'] . ")\n", 0);
+				return '';
+		}
+	}
+
+	protected function getRecursiveCfgArray($cfgpath) {
+		$timeperiodKeys = array(
+			'timeperiod_name' => true,
+			'alias'	=> true,
+			'exclude' => true
+		);
+		if($cfgpath[strlen($cfgpath)-1] == '/') {
+			$cfgpath = substr($cfgpath, 0, -1);
+		}
+		$cfg = array();
+		foreach(glob($cfgpath) as $p) {
+			if(is_dir($p)) {
+				$this->say("\tProcessing path: $p\n", 2);
+				foreach(glob("$p/*") as $p) {
+					// no directory && no *.cfg file? skip this entry
+					if(!is_dir($p) && !fnmatch("*.cfg", $p)) continue;
+					$subcfg = $this->getRecursiveCfgArray($p);
+					foreach($subcfg as $definedObject => $a) {
+						if(!isset($cfg[$definedObject])) {
+							$cfg[$definedObject] = $a;
+							continue;
+						}
+						foreach($a as $k => $definedVals) {
+							if(!isset($cfg[$definedObject][$k])) {
+								$cfg[$definedObject][$k] = $definedVals;
+								continue;
+							}
+							$this->say("\t\tERROR: $definedObject \"$k\" has been defined twice (defined in " . $a[$k]['p'] . ":" . $a[$k]['l'] . " and in " . $cfg[$definedObject][$k]['p'] . ":" . $cfg[$definedObject][$k]['l'] . ")\n", 0);
+							// $cfg[$definedObject][$k] = $definedVals; // comment the foreach loop, when using this line
+							foreach($definedVals['v'] as $key => $val) { // comment the above line, when using this loop
+								if(isset($cfg[$definedObject][$k]['v'][$key])) {
+									$this->say("\t\tERROR: Overwriting existing value from " . $cfg[$definedObject][$k]['v'][$key]['p'] . ":" . $cfg[$definedObject][$k]['v'][$key]['l'] . "  with the new value from " . $val['p'] . ":" . $val['l']."\n", 1);
+								}
+								else {
+									$this->say("\t\tERROR: Adding new value from " . $val['p'] . ":" . $val['l']." to an already defined object\n", 1);
+								}
+
+								$cfg[$definedObject][$k]['v'][$key] = $val;
+							}
+						}
+					}
+				}
+			}
+			else {
+				$this->say("\tProcessing file: $p\n", 2);
+				if($fp = fopen($p, 'r')) {
+					$isInDefine = false;
+					$definedObject = '';
+					$definedVals = array('p' => '', 'l' => 0, 'v' => array());
+					$l = 0;
+					while(!feof($fp)) {
+						$l++;
+						$line = trim(fgets($fp, 512000));
+						if($line == '' || $line[0] == '#') continue;
+						//$this->say("\t\t$line\n", 3);
+						if($isInDefine) {
+							if($line == '}') {
+								// get k to have it in case it will be ignored...
+								$k = strtolower($this->getCfgKey($definedObject, $definedVals));
+								// filer or rewrite  values
+								$definedVals = $this->processValues($definedObject, $definedVals);
+								//print_r($definedVals);
+								//$this->say("End of Define: $definedObject\n", 3);
+								if(empty($definedVals)) {
+									$this->say("\t\tNOTICE: Ignoring the object $definedObject \"$k\"\n", 1);
+								}
+								else {
+									// get k after rewrites or filtered values
+									$k = strtolower($this->getCfgKey($definedObject, $definedVals));
+									if(isset($cfg[$definedObject][$k])) {
+										$this->say("\t\tERROR: $definedObject \"$k\" has been defined twice (defined in " . $cfg[$definedObject][$k]['p'] . ":" . $cfg[$definedObject][$k]['l'] . " and in $p:$l)\n", 0);
+										// $cfg[$definedObject][$k] = $definedVals; // comment the foreach loop, when using this line
+										foreach($definedVals['v'] as $key => $val) { // comment the above line, when using this loop
+											if(isset($cfg[$definedObject][$k]['v'][$key])) {
+												$this->say("\t\tERROR: Overwriting existing value from " . $cfg[$definedObject][$k]['v'][$key]['p'] . ":" . $cfg[$definedObject][$k]['v'][$key]['l'] . "  with the new value from " . $val['p'] . ":" . $val['l']."\n", 1);
+											}
+											else {
+												$this->say("\t\tERROR: Adding new value from " . $val['p'] . ":" . $val['l']." to an already defined object\n", 1);
+											}
+											$cfg[$definedObject][$k]['v'][$key] = $val;
+										}
+									}
+									else {
+										$cfg[$definedObject][$k] = $definedVals;
+									}
+								}
+
+								$isInDefine = false;
+								$definedObject = '';
+								$definedVals = array('p' => '', 'l' => 0, 'v' => array());
+							}
+							else {
+								if(preg_match('/^(\S+)\s+(.*)$/', $line, $matches)) {
+									if($definedObject == 'timeperiod' && !isset($timeperiodKeys[$matches[1]])) {
+										$matches[0] = preg_replace('/\s+/', ' ', $matches[0]);
+										if(isset($definedVals['v'][$matches[0]])) {
+											$this->say("\t\tERROR: Value \"" . $matches[0] . "\" has been defined twice (defined in " . $definedVals['v'][$matches[0]]['p'] . ":"  . $definedVals['v'][$matches[0]]['l'] .  " and in $p:$l)\n", 0);
+										}
+										$definedVals['v'][$matches[0]] = array('p' => $p, 'l' => $l, 'v' => '');
+									}
+									else {
+										if(isset($definedVals['v'][$matches[1]])) {
+											$this->say("\t\tERROR: Value \"" . $matches[1] . "\" has been defined twice (defined in " . $definedVals['v'][$matches[1]]['p'] . ":"  . $definedVals['v'][$matches[1]]['l'] .  " and in $p:$l)\n", 0);
+										}
+										$definedVals['v'][$matches[1]] = array('p' => $p, 'l' => $l, 'v' => trim($matches[2]));
+									}
+								}
+							}
+						}
+						else {
+							if(preg_match('/^define\s+(\S+)\s*\{$/i', $line, $matches)) {
+								$isInDefine = true;
+								$definedObject = strtolower($matches[1]);
+								$definedVals = array('p' => $p, 'l' => $l, 'v' => array());
+								//$this->say("Define:        $definedObject\n", 3);
+							}
+						}
+					}
+					if($isInDefine) {
+						$this->say("\t\tERROR: a define has not been closed\n", 0);
+					}
+					fclose($fp);
+				}
+				else {
+					$this->say("\t\tERROR: cannot open file: " . $p . "\n", 0);
+				}
+			}
+		}
+		return $cfg;
+	}
+}
+
+class CfgDiff {
+	protected $useColors;
+	protected static $tty = null;
+	protected $cfg1;
+	protected $cfg2;
+
+	public function __construct(Cfg $cfg1, Cfg $cfg2, $useColors = null) {
+		if($useColors === null) {
+			$useColors = self::isTty();
+		}
+		if($cfg1 === null) {
+			throw new \DomainException('Null is not supported for cfg1.');
+		}
+		if($cfg2 === null) {
+			throw new \DomainException('Null is not supported for cfg2.');
+		}
+		$this->cfg1 = $cfg1;
+		$this->cfg2 = $cfg2;
+		$this->useColors = (bool) $useColors;
+	}
+
+	public static function isTty() {
+		if(self::$tty === null) {
+			self::$tty = true;
+			if (function_exists('posix_isatty')
+			    && !posix_isatty(STDOUT)
+			) {
+			    self::$tty = false;
+			}
+		}
+		return self::$tty;
+	}
+
+	protected function coloredEcho($str, $color) {
+		if($this->useColors) {
+			switch(strtolower(trim($color))) {
+				case 'black': $c = '0;30'; break;
+				case 'dark_gray': $c = '1;30'; break;
+				case 'blue': $c = '0;34'; break;
+				case 'light_blue': $c = '1;34'; break;
+				case 'green': $c = '0;32'; break;
+				case 'light_green': $c = '1;32'; break;
+				case 'cyan': $c = '0;36'; break;
+				case 'light_cyan': $c = '1;36'; break;
+				case 'red': $c = '0;31'; break;
+				case 'light_red': $c = '1;31'; break;
+				case 'purple': $c = '0;35'; break;
+				case 'light_purple': $c = '1;35'; break;
+				case 'brown': $c = '0;33'; break;
+				case 'yellow': $c = '1;33'; break;
+				case 'light_gray': $c = '0;37'; break;
+				case 'white': $c = '1;37'; break;
+				default: echo "$str"; return;
+			}
+			echo "\033[" . $c . "m" . $str . "\033[0m";
+		}
+		else {
+			echo "$str";
+		}
+	}
+
+	public function display($showStats = true, $showDiff = true) {
+		$showStats = (bool)$showStats;
+		$showDiff = (bool)$showDiff;
+		// nothing to do?
+		if($showStats == false && $showDiff == false) return;
+		$stats = array(
+			'c' => array(
+				'New Objects' => 0,
+				'Changed Objects' => 0,
+				'Removed Objects' => 0,
+				'New Values' => 0,
+				'Changed Values' => 0,
+				'Removed Values' => 0,
+			)
+		);
+		$cfg1 = $this->cfg1->getParsedObjects();
+		$cfg2 = $this->cfg2->getParsedObjects();
+		// find changed & old nodes
+		foreach($cfg1 as $definedObject => $a) {
+			if(!isset($cfg2[$definedObject])) {
+				foreach($a as $k => $definedVals) {
+					$stats['c']['Removed Objects']++;
+					if($showDiff) {
+						echo "Removed $definedObject: $k\n";
+						$this->coloredEcho("<<< ", 'red'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho("< define $definedObject {\n", 'red');
+					}
+					foreach($definedVals['v'] as $key => $val) {
+						$stats['c']['Removed Values']++;
+						if($showDiff) $this->coloredEcho("< \t$key " . $val['v'] . "\n", 'red');
+					}
+					if($showDiff) $this->coloredEcho("< }\n", 'red');
+				}
+				continue;
+			}
+			foreach($a as $k => $definedVals) {
+				if(!isset($cfg2[$definedObject][$k])) {
+					$stats['c']['Removed Objects']++;
+					if($showDiff) {
+						echo "Removed $definedObject: $k\n";
+						$this->coloredEcho("<<< ", 'red'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho("< define $definedObject {\n", 'red');
+					}
+					foreach($definedVals['v'] as $key => $val) {
+						$stats['c']['Removed Values']++;
+						if($showDiff) $this->coloredEcho("< \t$key " . $val['v'] . "\n", 'red');
+					}
+					if($showDiff) $this->coloredEcho("< }\n", 'red');
+					continue;
+				}
+				$hasChanges = false;
+				foreach($definedVals['v'] as $key => $val) {
+					if(!isset($cfg2[$definedObject][$k]['v'][$key]) || $val['v'] != $cfg2[$definedObject][$k]['v'][$key]['v']) {
+						$hasChanges = true;
+						break;
+					}
+				}
+				foreach($cfg2[$definedObject][$k]['v'] as $key => $val) {
+					if(!isset($definedVals['v'][$key])) {
+						$hasChanges = true;
+						break;
+					}
+				}
+				if($hasChanges) {
+					$stats['c']['Changed Objects']++;
+					if($showDiff) {
+						echo "Changed $definedObject: $k\n";
+						$this->coloredEcho("<<< ", 'red'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho(">>> ", 'green'); $this->coloredEcho($cfg2[$definedObject][$k]['p'] . ':' . $cfg2[$definedObject][$k]['l'] . "\n", 'cyan');
+						$this->coloredEcho("| define $definedObject {\n", 'brown');
+					}
+					foreach($definedVals['v'] as $key => $val) {
+						if(!isset($cfg2[$definedObject][$k]['v'][$key])) {
+							$stats['c']['Removed Values']++;
+							if($showDiff) $this->coloredEcho("< \t$key " . $val['v'] . "\n", 'red');
+						}
+						elseif($val['v'] != $cfg2[$definedObject][$k]['v'][$key]['v']) {
+							$stats['c']['Changed Values']++;
+							if($showDiff) {
+								$this->coloredEcho("< \t$key " . $val['v'] . "\n", 'red');
+								$this->coloredEcho("> \t$key " . $cfg2[$definedObject][$k]['v'][$key]['v'] . "\n", 'green');
+							}
+						}
+						else {
+							if($showDiff) $this->coloredEcho("| \t$key " . $val['v'] . "\n", 'brown');
+						}
+					}
+					foreach($cfg2[$definedObject][$k]['v'] as $key => $val) {
+						if(!isset($definedVals['v'][$key])) {
+							$stats['c']['New Values']++;
+							if($showDiff) $this->coloredEcho("> \t$key " . $val['v'] . "\n", 'green');
+						}
+					}
+					if($showDiff) $this->coloredEcho("| }\n", 'brown');
+				}
+			}
+		}
+
+		// new nodes
+		foreach($cfg2 as $definedObject => $a) {
+			if(!isset($cfg1[$definedObject])) {
+				foreach($a as $k => $definedVals) {
+					$stats['c']['New Objects']++;
+					if($showDiff) {
+						echo "New $definedObject: $k\n";
+						$this->coloredEcho(">>> ", 'green'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho("> define $definedObject {\n", 'green');
+					}
+					foreach($definedVals['v'] as $key => $val) {
+						$stats['c']['New Values']++;
+						if($showDiff) $this->coloredEcho("> \t$key " . $val['v'] . "\n", 'green');
+					}
+					if($showDiff) $this->coloredEcho("> }\n", 'green');
+				}
+				continue;
+			}
+			foreach($a as $k => $definedVals) {
+				if(!isset($cfg1[$definedObject][$k])) {
+					$stats['c']['New Objects']++;
+					if($showDiff) {
+						echo "New $definedObject: $k\n";
+						$this->coloredEcho(">>> ", 'green'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho("> define $definedObject {\n", 'green');
+					}
+					foreach($definedVals['v'] as $key => $val) {
+						$stats['c']['New Values']++;
+						if($showDiff) $this->coloredEcho("> \t$key " . $val['v'] . "\n", 'green');
+					}
+					if($showDiff) $this->coloredEcho("> }\n", 'green');
+					continue;
+				}
+			}
+		}
+		if($showStats) {
+			if($showDiff) echo "\n";
+			echo "Statistics:\n";
+			foreach($stats['c'] as $k => $v) {
+				echo "\t" . sprintf('%16s: %s', $k, $v) . "\n";
+				
+			}
+		}
+	}
+}
