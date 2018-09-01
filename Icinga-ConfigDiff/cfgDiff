@@ -1,71 +1,92 @@
 #!/usr/bin/env php
 <?php
 
+// just run if, the executed file is this file
+if(realpath(__FILE__) == realpath($_SERVER['SCRIPT_FILENAME'])) {
+	/*$_cfgDiff_myStat = stat(__FILE__);
+	$_cfgDiff_scriptStat = stat($_SERVER['SCRIPT_FILENAME']);
+	$_cfgDiff_Run = true;
+	foreach(array('dev', 'ino', 'mode', 'nlink', 'uid', 'gid', 'rdev', 'size', 'ctime') as $k) {
+		if(@$_cfgDiff_myStat[$k] != @$_cfgDiff_scriptStat[$k]) {
+			$_cfgDiff_Run = false;
+			break;
+		}
+	}
+	if($_cfgDiff_Run) {
+		startCfgDiff();
+	}*/
+	startCfgDiff();
+}
 
-$opts = array(
-	'v' => 0,
-	'stat' => true,
-	'diff' => true,
-);
-$args = array();
-foreach($_SERVER['argv'] as $i => $v) {
-	if($i == 0) continue;
-	switch($v) {
-		case '-h': $opts['h'] =  true; break;
-		case '-q':   $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
-		case '-v':   $opts['v'] =  max($opts['v'], 1); break;
-		case '-vv':  $opts['v'] =  max($opts['v'], 2); break;
-		case '-vvv': $opts['v'] =  max($opts['v'], 3); break;
-		case '--stat':    $opts['stat'] = true;  break;
-		case '--no-stat': $opts['stat'] = false; break;
-		case '--just-stat': $opts['stat'] = true; $opts['diff'] = false; $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
-		case '--just-diff': $opts['stat'] = false; $opts['diff'] = true; $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
-		case '--': $i++; break(2);
-		default: break(2);
+function startCfgDiff() {
+	if(php_sapi_name() !== 'cli') throw new \RuntimeException('Cannot start. This script requires cli.');
+
+	$opts = array(
+		'v' => 0,
+		'stat' => true,
+		'diff' => true,
+		'cfgProcessors' => array(),
+	);
+	$args = array();
+	foreach($_SERVER['argv'] as $i => $v) {
+		if($i == 0) continue;
+		switch($v) {
+			case '-h': $opts['h'] =  true; break;
+			case '-q':   $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
+			case '-v':   $opts['v'] =  max($opts['v'], 1); break;
+			case '-vv':  $opts['v'] =  max($opts['v'], 2); break;
+			case '-vvv': $opts['v'] =  max($opts['v'], 3); break;
+			case '--stat':    $opts['stat'] = true;  break;
+			case '--no-stat': $opts['stat'] = false; break;
+			case '--just-stat': $opts['stat'] = true; $opts['diff'] = false; $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
+			case '--just-diff': $opts['stat'] = false; $opts['diff'] = true; $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
+			case '--': $i++; break(2);
+			default: break(2);
+		}
+	}
+	$args = array_slice($_SERVER['argv'], $i);
+
+	if(count($args) < 2 || $args[0] == '' || $args[1] == '' || (isset($opts['h']) && $opts['h'])) {
+		echo "+-------------------------------------------------------+\n";
+		echo "| Show the difference between two Icinga configurations |\n";
+		echo "+-------------------------------------------------------+\n\n";
+		echo "USAGE: " . basename($_SERVER['argv'][0]) . " [options] globpath1 globpath2\n\n";
+		echo "\t-h = Show this help\n";
+		echo "\t-q, -v, -vv, -vvv  = Set the verbosity (quiet, verbose, very verbose, debug)\n";
+		echo "\t--stat      = Show the statistics\n";
+		echo "\t--no-stat   = Don't show the statistics\n";
+		echo "\t--just-stat = Just show the statistics (this also sets verbosity to quiet)\n";
+		echo "\t--just-diff = Just show the diff (this also sets verbosity to quiet)\n";
+		exit();
+	}
+
+	if($opts['v'] >= 1) echo "Reading the configuration from glob path \"" . $args[0] . "\" into memory\n";
+	$cfg1 = new Cfg($args[0], $opts['v']);
+	if($opts['v'] >= 1) echo "Reading the configuration from glob path \"" . $args[1] . "\" into memory\n";
+	$cfg2 = new Cfg($args[1], $opts['v']);
+
+	if($opts['stat'] == false && $opts['diff'] == false) {
+		if($opts['v'] >= 1) echo "WARNING: Not calculating any diff...\n\n";
+	}
+	else {
+		if($opts['v'] >= 1) echo "Calculating the diff...\n\n";
+		$cfg1->diff($cfg2)->display(
+			$opts['stat'],
+			$opts['diff']
+		);
 	}
 }
-$args = array_slice($_SERVER['argv'], $i);
 
-if(count($args) < 2 || $args[0] == '' || $args[1] == '' || (isset($opts['h']) && $opts['h'])) {
-	echo "+-------------------------------------------------------+\n";
-	echo "| Show the difference between two Icinga configurations |\n";
-	echo "+-------------------------------------------------------+\n\n";
-	echo "USAGE: " . basename($_SERVER['argv'][0]) . " [options] globpath1 globpath2\n\n";
-	echo "\t-h = Show this help\n";
-	echo "\t-q, -v, -vv, -vvv  = Set the verbosity (quiet, verbose, very verbose, debug)\n";
-	echo "\t--stat      = Show the statistics\n";
-	echo "\t--no-stat   = Don't show the statistics\n";
-	echo "\t--just-stat = Just show the statistics (this also sets verbosity to quiet)\n";
-	echo "\t--just-diff = Just show the diff (this also sets verbosity to quiet)\n";
-	exit();
-}
-
-if($opts['v'] >= 1) echo "Reading the configuration from glob path \"" . $args[0] . "\" into memory\n";
-$cfg1 = new Cfg($args[0], $opts['v']);
-if($opts['v'] >= 1) echo "Reading the configuration from glob path \"" . $args[1] . "\" into memory\n";
-$cfg2 = new Cfg($args[1], $opts['v']);
-
-if($opts['stat'] == false && $opts['diff'] == false) {
-	if($opts['v'] >= 1) echo "WARNING: Not calculating any diff...\n\n";
-}
-else {
-	if($opts['v'] >= 1) echo "Calculating the diff...\n\n";
-	$cfg1->diff($cfg2)->display(
-		$opts['stat'],
-		$opts['diff']
-	);
-}
-
-class closureCfgProcessor implements CfgProcessor {
+class ClosureCfgProcessor implements CfgProcessor {
 	protected $func;
 
 	public function __construct(\Closure $func) {
 		$this->func = $func;
 	}
 
-	public function processValues($definedObject, array $definedVals) {
+	public function processValues($definedObject, array $definedVals, $verbosity) {
 		$f = $this->func;
-		return $f($definedObject, $definedVals);
+		return $f($definedObject, $definedVals, $verbosity);
 	}
 }
 
@@ -75,10 +96,12 @@ Interface CfgProcessor {
 	 *
 	 * It can be used to modify the diff by deleting or normalizing values
 	 * @param string $definedObject the name of the object
+	 * @param string $definedObject the name of the object
 	 * @param array  $definedVals the defined values ( the actual values are under:  $definedVals['v'][KEYNAME]['v'] )
+	 * @param int  $verbosity  the verbosity ( -1 = quiet, 0 = noraml, 1 = verbose, 2 = very verbose, 3 = debug)
 	 * @return array  the new $definedVals or empty array in case the whole object should be ignored
 	 */
-	public function processValues($definedObject, array $definedVals);
+	public function processValues($definedObject, array $definedVals, $verbosity);
 }
 
 class Cfg {
@@ -124,7 +147,7 @@ class Cfg {
 		// is function can be used to modify the diff by deleting or normalizing values
 		// IDEALLY THIS FUNCTION SHOULD JUST DO NOTHING:
 		foreach(self::$processors as $p) {
-			$definedVals = $p->processValues($definedObject, $definedVals);
+			$definedVals = $p->processValues($definedObject, $definedVals, $this->verbosity);
 			if(!is_array($definedVals) || empty($definedVals)) return array();
 		}
 		return $definedVals;

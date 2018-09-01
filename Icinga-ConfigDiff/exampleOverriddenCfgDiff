@@ -1,0 +1,47 @@
+#!/usr/bin/env php
+<?php
+
+ob_start();
+include("cfgDiff");
+ob_end_clean();
+
+ 
+class ExampleIgnoreExecutionFailureCriteriaProcessor implements CfgProcessor {
+	public function processValues($definedObject, array $definedVals, $verbosity) {
+		if(isset($definedVals['v']['execution_failure_criteria'])) {
+			// say something, in case we are at least very verbose
+			if($verbosity >= 2) {
+				echo "\t\tNOTICE: Removing execution_failure_criteria defined in " . $definedVals['v']['execution_failure_criteria']['p'] . ':' .$definedVals['v']['execution_failure_criteria']['l'] . "\n";
+			}
+			unset($definedVals['v']['execution_failure_criteria']);
+		}
+		return $definedVals;
+	}
+}
+Cfg::pushProcessor(new ExampleIgnoreExecutionFailureCriteriaProcessor());
+
+class ExampleIgnoreServiceDependency implements CfgProcessor {
+	public function processValues($definedObject, array $definedVals, $verbosity) {
+		if($definedObject == 'servicedependency') {
+
+			// not configuration set? do nothing
+			if(!isset($definedVals['v']['dependent_host_name']) || !isset($definedVals['v']['dependent_service_description'])) return $definedVals;
+			// all dependencies to localhost - some important service should be ignored
+			if(
+				$definedVals['v']['dependent_host_name']['v'] == 'localhost' &&
+				$definedVals['v']['dependent_service_description']['v'] == 'some important service'
+			) {
+				// ignore the whole object (Empty arrays get automatically logged
+				return array();
+			}
+		}
+		// do nothing
+		return $definedVals;
+	}
+}
+Cfg::pushProcessor(new ExampleIgnoreExecutionFailureCriteriaProcessor());
+Cfg::pushProcessor(new ExampleIgnoreServiceDependency());
+
+
+startCfgDiff();
+
