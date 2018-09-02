@@ -5,6 +5,9 @@ ob_start();
 include("cfgDiff");
 ob_end_clean();
 
+function echo_help_summary() {
+	echo "This is an example, that shows how to filter objects & values.\n\n";
+}
  
 class ExampleIgnoreExecutionFailureCriteriaProcessor implements CfgProcessor {
 	public function processValues($definedObject, array $definedVals, $verbosity) {
@@ -31,7 +34,7 @@ class ExampleIgnoreServiceDependency implements CfgProcessor {
 				$definedVals['v']['dependent_host_name']['v'] == 'localhost' &&
 				$definedVals['v']['dependent_service_description']['v'] == 'some important service'
 			) {
-				// ignore the whole object (Empty arrays get automatically logged
+				// ignore the whole object (Empty arrays get automatically logged)
 				return array();
 			}
 		}

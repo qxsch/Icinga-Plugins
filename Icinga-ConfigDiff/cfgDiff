@@ -50,19 +50,30 @@ function startCfgDiff() {
 	$args = array_slice($_SERVER['argv'], $i);
 
 	if(count($args) < 2 || $args[0] == '' || $args[1] == '' || (isset($opts['h']) && $opts['h'])) {
-		echo "+-------------------------------------------------------+\n";
-		echo "| Show the difference between two Icinga configurations |\n";
-		echo "+-------------------------------------------------------+\n\n";
-		echo "USAGE: " . basename($_SERVER['argv'][0]) . " [options] globpath1 globpath2\n\n";
+		$writer = new ConsoleWriter(3, $opts['color']);
+		$writer->setColor('brown');
+		$writer->write("+-------------------------------------------------------+\n");
+		$writer->write("| Show the difference between two Icinga configurations |\n");
+		$writer->write("+-------------------------------------------------------+\n\n");
+		$writer->setColor();
+		$writer
+			->write("USAGE: ")
+			->write(basename($_SERVER['argv'][0]), 0, 'brown')
+			->write(" [options] ", 0, 'green')
+			->write("globpath1")
+			->write(" ")
+			->write("globpath2")
+			->write("\n\n")
+		;
 		if(function_exists('echo_help_summary')) echo_help_summary();
-		echo "\t-h = Show this help\n";
-		echo "\t-q, -v, -vv, -vvv  = Set the verbosity (quiet, verbose, very verbose, debug)\n";
-		echo "\t--stat      = Show the statistics\n";
-		echo "\t--no-stat   = Don't show the statistics\n";
-		echo "\t--just-stat = Just show the statistics (this also sets verbosity to quiet)\n";
-		echo "\t--just-diff = Just show the diff (this also sets verbosity to quiet)\n";
-		echo "\t--no-color  = Do not use terminal colors\n";
-		echo "\t--color     = Use terminal colors\n";
+		$writer->write("\t-h ", 0, 'green')->write("= Show this help\n");
+		$writer->write("\t-q, -v, -vv, -vvv  ", 0, 'green')->write("= Set the verbosity (quiet, verbose, very verbose, debug)\n");
+		$writer->write("\t--stat      ", 0, 'green')->write("= Show the statistics\n");
+		$writer->write("\t--no-stat   ", 0, 'green')->write("= Don't show the statistics\n");
+		$writer->write("\t--just-stat ", 0, 'green')->write("= Just show the statistics (this also sets verbosity to quiet)\n");
+		$writer->write("\t--just-diff ", 0, 'green')->write("= Just show the diff (this also sets verbosity to quiet)\n");
+		$writer->write("\t--no-color  ", 0, 'green')->write("= Do not use terminal colors\n");
+		$writer->write("\t--color     ", 0, 'green')->write("= Use terminal colors\n");
 		exit();
 	}
 
@@ -328,23 +339,31 @@ class ConsoleWriter {
 	protected $useColors;
 	protected static $tty = null;
 	protected $supportedColors = array(
+		'highlight' => '1',
 		'black' => '0;30',
 		'dark_gray' => '1;30',
+		'darkgray' => '1;30',
 		'blue' => '0;34',
 		'light_blue' => '1;34',
+		'lightblue' => '1;34',
 		'green' => '0;32',
 		'light_green' => '1;32',
+		'lightgreen' => '1;32',
 		'cyan' => '0;36',
 		'light_cyan' => '1;36',
 		'red' => '0;31',
 		'light_red' => '1;31',
+		'lightred' => '1;31',
 		'purple' => '0;35',
 		'light_purple' => '1;35',
+		'lightpurple' => '1;35',
 		'brown' => '0;33',
 		'yellow' => '1;33',
 		'light_gray' => '0;37',
+		'lightgray' => '0;37',
 		'white' => '1;37',
-		'reset' => '0'
+		'reset' => '0',
+		'none' => '0'
 	);
 
 	public function __construct($verbosity, $useColors = null) {
@@ -365,7 +384,7 @@ class ConsoleWriter {
 		return $this;
 	}
 
-	public function write($str, $level=0, $color=null) {
+	public function write($str, $level=0, $color=null, $underline=false) {
 		if($this->verbosity >= $level) {
 		//echo "\033[" . $c . "m" . $str . "\033[0m";
 			if($color === null || !$this->useColors) {
@@ -373,6 +392,7 @@ class ConsoleWriter {
 				return $this;
 			}
 			$this->setColor($color);
+			if($underline) echo "\033[4m";
 			echo $str . "\033[0m";
 		}
 		return $this;
