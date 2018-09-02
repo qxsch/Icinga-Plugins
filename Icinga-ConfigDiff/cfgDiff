@@ -23,6 +23,7 @@ function startCfgDiff() {
 
 	$opts = array(
 		'v' => 0,
+		'color' => null,
 		'stat' => true,
 		'diff' => true,
 		'cfgProcessors' => array(),
@@ -40,6 +41,8 @@ function startCfgDiff() {
 			case '--no-stat': $opts['stat'] = false; break;
 			case '--just-stat': $opts['stat'] = true; $opts['diff'] = false; $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
 			case '--just-diff': $opts['stat'] = false; $opts['diff'] = true; $opts['v'] =  ( $opts['v'] <= 0 ? -1: max($opts['v'], -1) ); break;
+			case '--color':    $opts['color'] = true;  break;
+			case '--no-color': $opts['color'] = false; break;
 			case '--': $i++; break(2);
 			default: break(2);
 		}
@@ -51,12 +54,15 @@ function startCfgDiff() {
 		echo "| Show the difference between two Icinga configurations |\n";
 		echo "+-------------------------------------------------------+\n\n";
 		echo "USAGE: " . basename($_SERVER['argv'][0]) . " [options] globpath1 globpath2\n\n";
+		if(function_exists('echo_help_summary')) echo_help_summary();
 		echo "\t-h = Show this help\n";
 		echo "\t-q, -v, -vv, -vvv  = Set the verbosity (quiet, verbose, very verbose, debug)\n";
 		echo "\t--stat      = Show the statistics\n";
 		echo "\t--no-stat   = Don't show the statistics\n";
 		echo "\t--just-stat = Just show the statistics (this also sets verbosity to quiet)\n";
 		echo "\t--just-diff = Just show the diff (this also sets verbosity to quiet)\n";
+		echo "\t--no-color  = Do not use terminal colors\n";
+		echo "\t--color     = Use terminal colors\n";
 		exit();
 	}
 
@@ -70,7 +76,7 @@ function startCfgDiff() {
 	}
 	else {
 		if($opts['v'] >= 1) echo "Calculating the diff...\n\n";
-		$cfg1->diff($cfg2)->display(
+		$cfg1->diff($cfg2, $opts['color'])->display(
 			$opts['stat'],
 			$opts['diff']
 		);
@@ -106,14 +112,15 @@ Interface CfgProcessor {
 
 class Cfg {
 	protected $globpath;
-
 	protected $parsedObjects = array();
+	protected $writer;
 
 	protected static $processors = array();
 
 	public function __construct($globpath, $verbosity = 0) {
 		$this->globpath = (string)$globpath;
 		$this->verbosity = (int)$verbosity;
+		$this->writer = new ConsoleWriter($verbosity, null);
 		$this->update();
 	}
 
@@ -138,9 +145,7 @@ class Cfg {
 	}
 
 	protected function say($str, $level) {
-		if($this->verbosity >= $level) {
-			echo $str;
-		}
+		$this->writer->write($str, $level);
 	}
 
 	protected function processValues($definedObject, array $definedVals) {
@@ -318,25 +323,62 @@ class Cfg {
 	}
 }
 
-class CfgDiff {
+class ConsoleWriter {
+	protected $verbosity;
 	protected $useColors;
 	protected static $tty = null;
-	protected $cfg1;
-	protected $cfg2;
+	protected $supportedColors = array(
+		'black' => '0;30',
+		'dark_gray' => '1;30',
+		'blue' => '0;34',
+		'light_blue' => '1;34',
+		'green' => '0;32',
+		'light_green' => '1;32',
+		'cyan' => '0;36',
+		'light_cyan' => '1;36',
+		'red' => '0;31',
+		'light_red' => '1;31',
+		'purple' => '0;35',
+		'light_purple' => '1;35',
+		'brown' => '0;33',
+		'yellow' => '1;33',
+		'light_gray' => '0;37',
+		'white' => '1;37',
+		'reset' => '0'
+	);
 
-	public function __construct(Cfg $cfg1, Cfg $cfg2, $useColors = null) {
+	public function __construct($verbosity, $useColors = null) {
 		if($useColors === null) {
 			$useColors = self::isTty();
 		}
-		if($cfg1 === null) {
-			throw new \DomainException('Null is not supported for cfg1.');
+		$this->useColors = (bool)$useColors;
+		$this->verbosity = (int)$verbosity;
+	}
+
+	public function setColor($color='reset') {
+		if($this->useColors) {
+			$color = strtolower($color);
+			if(isset($this->supportedColors[$color])) {
+				echo "\033[" . $this->supportedColors[$color] . "m";
+			}
 		}
-		if($cfg2 === null) {
-			throw new \DomainException('Null is not supported for cfg2.');
+		return $this;
+	}
+
+	public function write($str, $level=0, $color=null) {
+		if($this->verbosity >= $level) {
+		//echo "\033[" . $c . "m" . $str . "\033[0m";
+			if($color === null || !$this->useColors) {
+				echo $str;
+				return $this;
+			}
+			$this->setColor($color);
+			echo $str . "\033[0m";
 		}
-		$this->cfg1 = $cfg1;
-		$this->cfg2 = $cfg2;
-		$this->useColors = (bool) $useColors;
+		return $this;
+	}
+	public function writeln($str, $level=0, $color=null) {
+		return $this->write("$str\n", $level, $color);
 	}
 
 	public static function isTty() {
@@ -351,32 +393,27 @@ class CfgDiff {
 		return self::$tty;
 	}
 
+}
+
+class CfgDiff {
+	protected $writer;
+	protected $cfg1;
+	protected $cfg2;
+
+	public function __construct(Cfg $cfg1, Cfg $cfg2, $useColors = null) {
+		if($cfg1 === null) {
+			throw new \DomainException('Null is not supported for cfg1.');
+		}
+		if($cfg2 === null) {
+			throw new \DomainException('Null is not supported for cfg2.');
+		}
+		$this->cfg1 = $cfg1;
+		$this->cfg2 = $cfg2;
+		$this->writer = new ConsoleWriter(3, $useColors);
+	}
+
 	protected function coloredEcho($str, $color) {
-		if($this->useColors) {
-			switch(strtolower(trim($color))) {
-				case 'black': $c = '0;30'; break;
-				case 'dark_gray': $c = '1;30'; break;
-				case 'blue': $c = '0;34'; break;
-				case 'light_blue': $c = '1;34'; break;
-				case 'green': $c = '0;32'; break;
-				case 'light_green': $c = '1;32'; break;
-				case 'cyan': $c = '0;36'; break;
-				case 'light_cyan': $c = '1;36'; break;
-				case 'red': $c = '0;31'; break;
-				case 'light_red': $c = '1;31'; break;
-				case 'purple': $c = '0;35'; break;
-				case 'light_purple': $c = '1;35'; break;
-				case 'brown': $c = '0;33'; break;
-				case 'yellow': $c = '1;33'; break;
-				case 'light_gray': $c = '0;37'; break;
-				case 'white': $c = '1;37'; break;
-				default: echo "$str"; return;
-			}
-			echo "\033[" . $c . "m" . $str . "\033[0m";
-		}
-		else {
-			echo "$str";
-		}
+		$this->writer->write($str, 0, $color);
 	}
 
 	public function display($showStats = true, $showDiff = true) {
