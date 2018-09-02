@@ -374,6 +374,14 @@ class ConsoleWriter {
 		$this->verbosity = (int)$verbosity;
 	}
 
+	public function addCustomColor($name, $code) {
+		if(!isset($this->supportedColors[$name])) {
+			$this->supportedColors[$name] = $code;
+			return true;
+		}
+		return false;
+	}
+
 	public function setColor($color='reset') {
 		if($this->useColors) {
 			$color = strtolower($color);
