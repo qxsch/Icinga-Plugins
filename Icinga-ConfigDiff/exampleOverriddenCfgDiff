@@ -14,7 +14,7 @@ class ExampleIgnoreExecutionFailureCriteriaProcessor implements CfgProcessor {
 		if(isset($definedVals['v']['execution_failure_criteria'])) {
 			// say something, in case we are at least very verbose
 			if($verbosity >= 2) {
-				echo "\t\tNOTICE: Removing execution_failure_criteria defined in " . $definedVals['v']['execution_failure_criteria']['p'] . ':' .$definedVals['v']['execution_failure_criteria']['l'] . "\n";
+				echo "\t\tNOTICE: Removing execution_failure_criteria defined in " . PathCompressor::getPath($definedVals['v']['execution_failure_criteria']['p']) . ':' .$definedVals['v']['execution_failure_criteria']['l'] . "\n";
 			}
 			unset($definedVals['v']['execution_failure_criteria']);
 		}

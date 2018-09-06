@@ -94,6 +94,29 @@ function startCfgDiff() {
 	}
 }
 
+class PathCompressor {
+	private static $id = 0;
+	private static $pathToId = array();
+	private static $idToPath = array();
+
+	public static function getId($path) {
+		$path = (string)$path;
+		if(!isset(self::$pathToId[$path])) {
+			self::$id++;
+			self::$pathToId[$path] = self::$id;
+			self::$idToPath[self::$id] = $path;
+		}
+		return self::$pathToId[$path];
+	}
+	public static function getPath($id) {
+		$id = (int)$id;
+		if(isset(self::$idToPath[self::$id])) {
+			return self::$idToPath[self::$id];
+		}
+		return null;
+	}
+}
+
 class ClosureCfgProcessor implements CfgProcessor {
 	protected $func;
 
@@ -173,7 +196,7 @@ class Cfg {
 		// template
 		if(isset($definedVals['v']['name']['v'])) {
 			if(!isset($definedVals['v']['register']['v']) || $definedVals['v']['register']['v'] != 0) {
-				$this->say("\t\tWARNING: You have a registered Template $definedObject (defined in " . $definedVals['p'] . ":" . $definedVals['l'] . ")\n", 0);
+				$this->say("\t\tWARNING: You have a registered Template $definedObject (defined in " . PathCompressor::getPath($definedVals['p']) . ":" . $definedVals['l'] . ")\n", 0);
 			}
 			return 'template-' . $definedObject . '||' . $definedVals['v']['name']['v'];
 		}
@@ -197,7 +220,7 @@ class Cfg {
 			case 'contactgroup':
 				return  $definedObject . '||' . $definedVals['v']['contactgroup_name']['v'];
 			default:
-				$this->say("\t\tERROR: Unknown Object $definedObject - using '' as key (defined in " . $definedVals['p'] . ":" . $definedVals['l'] . ")\n", 0);
+				$this->say("\t\tERROR: Unknown Object $definedObject - using '' as key (defined in " . PathCompressor::getPath($definedVals['p']) . ":" . $definedVals['l'] . ")\n", 0);
 				return '';
 		}
 	}
@@ -229,14 +252,14 @@ class Cfg {
 								$cfg[$definedObject][$k] = $definedVals;
 								continue;
 							}
-							$this->say("\t\tERROR: $definedObject \"$k\" has been defined twice (defined in " . $a[$k]['p'] . ":" . $a[$k]['l'] . " and in " . $cfg[$definedObject][$k]['p'] . ":" . $cfg[$definedObject][$k]['l'] . ")\n", 0);
+							$this->say("\t\tERROR: $definedObject \"$k\" has been defined twice (defined in " . PathCompressor::getPath($a[$k]['p']) . ":" . $a[$k]['l'] . " and in " . PathCompressor::getPath($cfg[$definedObject][$k]['p']) . ":" . $cfg[$definedObject][$k]['l'] . ")\n", 0);
 							// $cfg[$definedObject][$k] = $definedVals; // comment the foreach loop, when using this line
 							foreach($definedVals['v'] as $key => $val) { // comment the above line, when using this loop
 								if(isset($cfg[$definedObject][$k]['v'][$key])) {
-									$this->say("\t\tERROR: Overwriting existing value from " . $cfg[$definedObject][$k]['v'][$key]['p'] . ":" . $cfg[$definedObject][$k]['v'][$key]['l'] . "  with the new value from " . $val['p'] . ":" . $val['l']."\n", 1);
+									$this->say("\t\tERROR: Overwriting existing value from " . PathCompressor::getPath($cfg[$definedObject][$k]['v'][$key]['p']) . ":" . $cfg[$definedObject][$k]['v'][$key]['l'] . "  with the new value from " . PathCompressor::getPath($val['p']) . ":" . $val['l']."\n", 1);
 								}
 								else {
-									$this->say("\t\tERROR: Adding new value from " . $val['p'] . ":" . $val['l']." to an already defined object\n", 1);
+									$this->say("\t\tERROR: Adding new value from " . PathCompressor::getPath($val['p']) . ":" . $val['l']." to an already defined object\n", 1);
 								}
 
 								$cfg[$definedObject][$k]['v'][$key] = $val;
@@ -272,14 +295,14 @@ class Cfg {
 									// get k after rewrites or filtered values
 									$k = strtolower($this->getCfgKey($definedObject, $definedVals));
 									if(isset($cfg[$definedObject][$k])) {
-										$this->say("\t\tERROR: $definedObject \"$k\" has been defined twice (defined in " . $cfg[$definedObject][$k]['p'] . ":" . $cfg[$definedObject][$k]['l'] . " and in $p:$l)\n", 0);
+										$this->say("\t\tERROR: $definedObject \"$k\" has been defined twice (defined in " . PathCompressor::getPath($cfg[$definedObject][$k]['p']) . ":" . $cfg[$definedObject][$k]['l'] . " and in $p:$l)\n", 0);
 										// $cfg[$definedObject][$k] = $definedVals; // comment the foreach loop, when using this line
 										foreach($definedVals['v'] as $key => $val) { // comment the above line, when using this loop
 											if(isset($cfg[$definedObject][$k]['v'][$key])) {
-												$this->say("\t\tERROR: Overwriting existing value from " . $cfg[$definedObject][$k]['v'][$key]['p'] . ":" . $cfg[$definedObject][$k]['v'][$key]['l'] . "  with the new value from " . $val['p'] . ":" . $val['l']."\n", 1);
+												$this->say("\t\tERROR: Overwriting existing value from " . PathCompressor::getPath($cfg[$definedObject][$k]['v'][$key]['p']) . ":" . $cfg[$definedObject][$k]['v'][$key]['l'] . "  with the new value from " . PathCompressor::getPath($val['p']) . ":" . $val['l']."\n", 1);
 											}
 											else {
-												$this->say("\t\tERROR: Adding new value from " . $val['p'] . ":" . $val['l']." to an already defined object\n", 1);
+												$this->say("\t\tERROR: Adding new value from " . PathCompressor::getPath($val['p']) . ":" . $val['l']." to an already defined object\n", 1);
 											}
 											$cfg[$definedObject][$k]['v'][$key] = $val;
 										}
@@ -298,15 +321,15 @@ class Cfg {
 									if($definedObject == 'timeperiod' && !isset($timeperiodKeys[$matches[1]])) {
 										$matches[0] = preg_replace('/\s+/', ' ', $matches[0]);
 										if(isset($definedVals['v'][$matches[0]])) {
-											$this->say("\t\tERROR: Value \"" . $matches[0] . "\" has been defined twice (defined in " . $definedVals['v'][$matches[0]]['p'] . ":"  . $definedVals['v'][$matches[0]]['l'] .  " and in $p:$l)\n", 0);
+											$this->say("\t\tERROR: Value \"" . $matches[0] . "\" has been defined twice (defined in " . PathCompressor::getPath($definedVals['v'][$matches[0]]['p']) . ":"  . $definedVals['v'][$matches[0]]['l'] .  " and in $p:$l)\n", 0);
 										}
-										$definedVals['v'][$matches[0]] = array('p' => $p, 'l' => $l, 'v' => '');
+										$definedVals['v'][$matches[0]] = array('p' => PathCompressor::getId($p), 'l' => $l, 'v' => '');
 									}
 									else {
 										if(isset($definedVals['v'][$matches[1]])) {
-											$this->say("\t\tERROR: Value \"" . $matches[1] . "\" has been defined twice (defined in " . $definedVals['v'][$matches[1]]['p'] . ":"  . $definedVals['v'][$matches[1]]['l'] .  " and in $p:$l)\n", 0);
+											$this->say("\t\tERROR: Value \"" . $matches[1] . "\" has been defined twice (defined in " . PathCompressor::getPath($definedVals['v'][$matches[1]]['p']) . ":"  . $definedVals['v'][$matches[1]]['l'] .  " and in $p:$l)\n", 0);
 										}
-										$definedVals['v'][$matches[1]] = array('p' => $p, 'l' => $l, 'v' => trim($matches[2]));
+										$definedVals['v'][$matches[1]] = array('p' => PathCompressor::getId($p), 'l' => $l, 'v' => trim($matches[2]));
 									}
 								}
 							}
@@ -315,7 +338,7 @@ class Cfg {
 							if(preg_match('/^define\s+(\S+)\s*\{$/i', $line, $matches)) {
 								$isInDefine = true;
 								$definedObject = strtolower($matches[1]);
-								$definedVals = array('p' => $p, 'l' => $l, 'v' => array());
+								$definedVals = array('p' => PathCompressor::getId($p), 'l' => $l, 'v' => array());
 								//$this->say("Define:        $definedObject\n", 3);
 							}
 						}
@@ -468,7 +491,7 @@ class CfgDiff {
 					$stats['c']['Removed Objects']++;
 					if($showDiff) {
 						echo "Removed $definedObject: $k\n";
-						$this->coloredEcho("<<< ", 'red'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho("<<< ", 'red'); $this->coloredEcho(PathCompressor::getPath($definedVals['p']) . ':' . $definedVals['l'] . "\n", 'cyan');
 						$this->coloredEcho("< define $definedObject {\n", 'red');
 					}
 					foreach($definedVals['v'] as $key => $val) {
@@ -484,7 +507,7 @@ class CfgDiff {
 					$stats['c']['Removed Objects']++;
 					if($showDiff) {
 						echo "Removed $definedObject: $k\n";
-						$this->coloredEcho("<<< ", 'red'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho("<<< ", 'red'); $this->coloredEcho(PathCompressor::getPath($definedVals['p']) . ':' . $definedVals['l'] . "\n", 'cyan');
 						$this->coloredEcho("< define $definedObject {\n", 'red');
 					}
 					foreach($definedVals['v'] as $key => $val) {
@@ -511,8 +534,8 @@ class CfgDiff {
 					$stats['c']['Changed Objects']++;
 					if($showDiff) {
 						echo "Changed $definedObject: $k\n";
-						$this->coloredEcho("<<< ", 'red'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
-						$this->coloredEcho(">>> ", 'green'); $this->coloredEcho($cfg2[$definedObject][$k]['p'] . ':' . $cfg2[$definedObject][$k]['l'] . "\n", 'cyan');
+						$this->coloredEcho("<<< ", 'red'); $this->coloredEcho(PathCompressor::getPath($definedVals['p']) . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho(">>> ", 'green'); $this->coloredEcho(PathCompressor::getPath($cfg2[$definedObject][$k]['p']) . ':' . $cfg2[$definedObject][$k]['l'] . "\n", 'cyan');
 						$this->coloredEcho("| define $definedObject {\n", 'brown');
 					}
 					foreach($definedVals['v'] as $key => $val) {
@@ -549,7 +572,7 @@ class CfgDiff {
 					$stats['c']['New Objects']++;
 					if($showDiff) {
 						echo "New $definedObject: $k\n";
-						$this->coloredEcho(">>> ", 'green'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho(">>> ", 'green'); $this->coloredEcho(PathCompressor::getPath($definedVals['p']) . ':' . $definedVals['l'] . "\n", 'cyan');
 						$this->coloredEcho("> define $definedObject {\n", 'green');
 					}
 					foreach($definedVals['v'] as $key => $val) {
@@ -565,7 +588,7 @@ class CfgDiff {
 					$stats['c']['New Objects']++;
 					if($showDiff) {
 						echo "New $definedObject: $k\n";
-						$this->coloredEcho(">>> ", 'green'); $this->coloredEcho($definedVals['p'] . ':' . $definedVals['l'] . "\n", 'cyan');
+						$this->coloredEcho(">>> ", 'green'); $this->coloredEcho(PathCompressor::getPath($definedVals['p']) . ':' . $definedVals['l'] . "\n", 'cyan');
 						$this->coloredEcho("> define $definedObject {\n", 'green');
 					}
 					foreach($definedVals['v'] as $key => $val) {
